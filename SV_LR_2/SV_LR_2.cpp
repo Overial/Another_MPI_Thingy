@@ -4,51 +4,44 @@
 
 #include <iostream>
 #include <iomanip>
+#include <thread>
 #include <chrono>
 #include "mpi.h"
-
-#include <thread>
 
 using namespace std;
 using namespace std::chrono;
 
-#define TAG_SEND 0
-#define TAG_RECEIVE 1
+#define ROW_COUNT_A 8
+#define COL_COUNT_A 5
+#define COL_COUNT_B 3
 
-#define N1 8
-#define M1 5
-#define N2 5
-#define M2 3
+#define BLOCK_ROWS 2
 
-int Matrix1[N1][M1];
-int Matrix2[N2][M2];
-int Result[N1][M2];
-
-static void FillMatrices()
+static void FillMatrices(int Matrix1[ROW_COUNT_A][COL_COUNT_A], int Matrix2[COL_COUNT_A][COL_COUNT_B])
 {
-	for (int i = 0; i < N1; ++i)
+	for (int i = 0; i < ROW_COUNT_A; ++i)
 	{
-		for (int j = 0; j < M1; ++j)
+		for (int j = 0; j < COL_COUNT_A; ++j)
 		{
 			Matrix1[i][j] = rand() % 10;
 		}
 	}
 
-	for (int i = 0; i < N2; ++i)
+	for (int i = 0; i < COL_COUNT_A; ++i)
 	{
-		for (int j = 0; j < M2; ++j)
+		for (int j = 0; j < COL_COUNT_B; ++j)
 		{
 			Matrix2[i][j] = rand() % 10;
 		}
 	}
 }
 
-static void PrintMatrices()
+static void PrintMatrices(int Matrix1[ROW_COUNT_A][COL_COUNT_A], int Matrix2[COL_COUNT_A][COL_COUNT_B], int Result[ROW_COUNT_A][COL_COUNT_B])
 {
 	cout << "Matrix 1:" << endl;
-	for (int i = 0; i < N1; ++i)
+	for (int i = 0; i < ROW_COUNT_A; ++i)
 	{
-		for (int j = 0; j < M1; ++j)
+		for (int j = 0; j < COL_COUNT_A; ++j)
 		{
 			cout << setw(4) << Matrix1[i][j] << "|";
 		}
@@ -56,9 +49,9 @@ static void PrintMatrices()
 	}
 
 	cout << "Matrix 2:" << endl;
-	for (int i = 0; i < N2; ++i)
+	for (int i = 0; i < COL_COUNT_A; ++i)
 	{
-		for (int j = 0; j < M2; ++j)
+		for (int j = 0; j < COL_COUNT_B; ++j)
 		{
 			cout << setw(4) << Matrix2[i][j] << "|";
 		}
@@ -66,9 +59,9 @@ static void PrintMatrices()
 	}
 
 	cout << "Multiplication result:" << endl;
-	for (int i = 0; i < N1; ++i)
+	for (int i = 0; i < ROW_COUNT_A; ++i)
 	{
-		for (int j = 0; j < M2; ++j)
+		for (int j = 0; j < COL_COUNT_B; ++j)
 		{
 			cout << setw(4) << Result[i][j] << "|";
 		}
@@ -76,16 +69,16 @@ static void PrintMatrices()
 	}
 }
 
-void SingleProcessMult()
+void SingleProcessMult(int Matrix1[ROW_COUNT_A][COL_COUNT_A], int Matrix2[COL_COUNT_A][COL_COUNT_B], int Result[ROW_COUNT_A][COL_COUNT_B])
 {
 	// Столбцы второй матрицы
-	for (int k = 0; k < M2; ++k)
+	for (int k = 0; k < COL_COUNT_B; ++k)
 	{
 		// Строки первой матрицы
-		for (int i = 0; i < N1; ++i)
+		for (int i = 0; i < ROW_COUNT_A; ++i)
 		{
 			// Столбцы первой матрицы
-			for (int j = 0; j < M1; ++j)
+			for (int j = 0; j < COL_COUNT_A; ++j)
 			{
 				Result[i][k] += Matrix1[i][j] * Matrix2[j][k];
 			}
@@ -97,12 +90,8 @@ int main()
 {
 	int Rank = 0;
 	int ProcessCount = 0;
-	int WorkerProcessCount = 0;
 
 	MPI_Status Status;
-
-	int WorkerRowCount = 0;
-	int WorkerMatrixSubset = 0;
 
 	// Запускаем MPI
 	MPI_Init(NULL, NULL);
@@ -111,123 +100,162 @@ int main()
 	MPI_Comm_rank(MPI_COMM_WORLD, &Rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &ProcessCount);
 
-	WorkerProcessCount = ProcessCount - 1;
+	int WorkerProcessCount = ProcessCount - 1;
+
+	int MatrixA[ROW_COUNT_A][COL_COUNT_A] = { 0 };
+	int MatrixB[COL_COUNT_A][COL_COUNT_B] = { 0 };
+	int Result[ROW_COUNT_A][COL_COUNT_B] = { 0 };
+
+	srand(static_cast<unsigned int>(time(NULL)));
+	steady_clock::time_point StartTime = high_resolution_clock::now();
 
 	// Главный процесс
 	if (Rank == 0)
 	{
-		srand(static_cast<unsigned int>(time(NULL)));
+		// FillMatrices();
 
-		steady_clock::time_point StartTime = high_resolution_clock::now();
+		// Первая матрица для отладки
 
-		FillMatrices();
+		MatrixA[0][0] = 1;
+		MatrixA[0][1] = 2;
+		MatrixA[0][2] = 3;
+		MatrixA[0][3] = 4;
+		MatrixA[0][4] = 5;
+
+		MatrixA[1][0] = 6;
+		MatrixA[1][1] = 7;
+		MatrixA[1][2] = 8;
+		MatrixA[1][3] = 9;
+		MatrixA[1][4] = 1;
+
+		MatrixA[2][0] = 2;
+		MatrixA[2][1] = 3;
+		MatrixA[2][2] = 4;
+		MatrixA[2][3] = 5;
+		MatrixA[2][4] = 6;
+
+		MatrixA[3][0] = 7;
+		MatrixA[3][1] = 8;
+		MatrixA[3][2] = 9;
+		MatrixA[3][3] = 1;
+		MatrixA[3][4] = 2;
+		
+		MatrixA[4][0] = 3;
+		MatrixA[4][1] = 4;
+		MatrixA[4][2] = 5;
+		MatrixA[4][3] = 6;
+		MatrixA[4][4] = 7;
+
+		MatrixA[5][0] = 8;
+		MatrixA[5][1] = 9;
+		MatrixA[5][2] = 3;
+		MatrixA[5][3] = 2;
+		MatrixA[5][4] = 1;
+
+		MatrixA[6][0] = 4;
+		MatrixA[6][1] = 4;
+		MatrixA[6][2] = 7;
+		MatrixA[6][3] = 8;
+		MatrixA[6][4] = 9;
+
+		MatrixA[7][0] = 1;
+		MatrixA[7][1] = 2;
+		MatrixA[7][2] = 4;
+		MatrixA[7][3] = 3;
+		MatrixA[7][4] = 5;
+
+		// Вторая матрица для отладки
+
+		MatrixB[0][0] = 7;
+		MatrixB[0][1] = 5;
+		MatrixB[0][2] = 8;
+
+		MatrixB[1][0] = 4;
+		MatrixB[1][1] = 5;
+		MatrixB[1][2] = 2;
+
+		MatrixB[2][0] = 1;
+		MatrixB[2][1] = 5;
+		MatrixB[2][2] = 6;
+
+		MatrixB[3][0] = 7;
+		MatrixB[3][1] = 3;
+		MatrixB[3][2] = 9;
+
+		MatrixB[4][0] = 5;
+		MatrixB[4][1] = 1;
+		MatrixB[4][2] = 2;
+
+		// Ожидаемый результат:
+		// 71 | 47 | 76
+		// 146| 133| 193
+		// 95 | 66 | 103
+		// 107| 125| 139
+		// 119| 85 | 130
+		// 114| 107| 120
+		// 152| 108| 172
+		// 65 | 49 | 73
 
 		// При запуске на одном процессе
 		if (ProcessCount == 1)
 		{
 			steady_clock::time_point SingleStartTime = high_resolution_clock::now();
 
-			SingleProcessMult();
+			SingleProcessMult(MatrixA, MatrixB, Result);
 
 			steady_clock::time_point SingleEndTime = high_resolution_clock::now();
-
 			long long SingleTotalTime = duration_cast<microseconds>(SingleEndTime - SingleStartTime).count();
 
 			cout << "SINGLE PROCESS MODE" << endl;
-			PrintMatrices();
+			PrintMatrices(MatrixA, MatrixB, Result);
 			cout << "Total time: " << SingleTotalTime << endl;
 
 			MPI_Finalize();
 
 			return 0;
 		}
-
-		// Фрагмент первой матрицы для каждого рабочего процесса
-		WorkerMatrixSubset = 0;
-
-		// Количество строк для каждого рабочего процесса
-		WorkerRowCount = N1 / WorkerProcessCount;
-
-		// Раздача тасков
-		for (int i = 1; i <= WorkerProcessCount; ++i)
-		{
-			// Последний чел делает 99% всей работы
-			if (i == WorkerProcessCount)
-			{
-				WorkerRowCount += N1 % WorkerProcessCount;
-			}
-
-			// Отправить фрагмент матрицы
-			MPI_Send(&WorkerMatrixSubset, 1, MPI_INT, i, TAG_SEND, MPI_COMM_WORLD);
-
-			// Отправить количество строк
-			MPI_Send(&WorkerRowCount, 1, MPI_INT, i, TAG_SEND, MPI_COMM_WORLD);
-
-			// Отправить фрагмент первой матрицы
-			MPI_Send(&Matrix1[WorkerMatrixSubset][0], WorkerRowCount * M1, MPI_INT, i, TAG_SEND, MPI_COMM_WORLD);
-
-			// Отправить вторую матрицу
-			MPI_Send(&Matrix2, N2 * M2, MPI_INT, i, TAG_SEND, MPI_COMM_WORLD);
-
-			WorkerMatrixSubset += WorkerRowCount;
-		}
-
-		// Разбор полетов
-		for (int i = 1; i <= WorkerProcessCount; ++i)
-		{
-			MPI_Recv(&WorkerMatrixSubset, 1, MPI_INT, i, TAG_RECEIVE, MPI_COMM_WORLD, &Status);
-
-			MPI_Recv(&WorkerRowCount, 1, MPI_INT, i, TAG_RECEIVE, MPI_COMM_WORLD, &Status);
-
-			MPI_Recv(&Result[WorkerMatrixSubset][0], WorkerRowCount * M2, MPI_INT, i, TAG_RECEIVE, MPI_COMM_WORLD, &Status);
-		}
-
-		steady_clock::time_point EndTime = high_resolution_clock::now();
-
-		long long TotalTime = duration_cast<microseconds>(EndTime - StartTime).count();
-
-		cout << "MPI MODE USING " << WorkerProcessCount << " WORKER PROCESSES" << endl;
-		PrintMatrices();
-		cout << "Total time: " << TotalTime << endl;
 	}
 
-	// Рабочие процессы
-	if (Rank > 0)
+	// Раздаем пацанам вторую матрицу
+	MPI_Bcast(MatrixB, COL_COUNT_A * COL_COUNT_B, MPI_INT, 0, MPI_COMM_WORLD);
+
+	// Фрагмент первой матрицы
+	int BlockMatrixA[BLOCK_ROWS][COL_COUNT_A] = { 0 };
+
+	// Раздаем пацанам таски по первой матрице
+	MPI_Scatter(MatrixA, BLOCK_ROWS* COL_COUNT_A, MPI_INT, BlockMatrixA, BLOCK_ROWS* COL_COUNT_A, MPI_INT, 0, MPI_COMM_WORLD);
+
+	// Фрагмент результирующей матрицы
+	int BlockResult[BLOCK_ROWS][COL_COUNT_B] = { 0 };
+
+	// Пацаны пилят таски
+	for (int i = 0; i < BLOCK_ROWS; ++i)
 	{
-		// Получить фрагмент матрицы
-		MPI_Recv(&WorkerMatrixSubset, 1, MPI_INT, 0, TAG_SEND, MPI_COMM_WORLD, &Status);
-		cout << "Received worker matrix subset: " << WorkerMatrixSubset << endl;
-
-		// Получить строки
-		MPI_Recv(&WorkerRowCount, 1, MPI_INT, 0, TAG_SEND, MPI_COMM_WORLD, &Status);
-		cout << "Received worker row count: " << WorkerRowCount << endl;
-
-		// Получить исходную матрицу
-		MPI_Recv(&Matrix1, WorkerRowCount * M1, MPI_INT, 0, TAG_SEND, MPI_COMM_WORLD, &Status);
-
-		// Получить вторую матрицу
-		MPI_Recv(&Matrix2, N2 * M2, MPI_INT, 0, TAG_SEND, MPI_COMM_WORLD, &Status);
-
-		// Расчеты
-		for (int k = 0; k < M2; ++k)
+		for (int j = 0; j < COL_COUNT_B; ++j)
 		{
-			for (int i = 0; i < WorkerRowCount; ++i)
+			for (int k = 0; k < COL_COUNT_A; ++k)
 			{
-				for (int j = 0; j < M1; ++j)
-				{
-					Result[i][k] += Matrix1[i][j] * Matrix2[j][k];
-				}
+				BlockResult[i][j] += BlockMatrixA[i][k] * MatrixB[k][j];
 			}
 		}
+	}
 
-		// Отправить оффсет
-		MPI_Send(&WorkerMatrixSubset, 1, MPI_INT, 0, TAG_RECEIVE, MPI_COMM_WORLD);
+	// You shall not pass
+	MPI_Barrier(MPI_COMM_WORLD);
 
-		// Отправить строки
-		MPI_Send(&WorkerRowCount, 1, MPI_INT, 0, TAG_RECEIVE, MPI_COMM_WORLD);
+	// Пацаны отчитываются о проделанной работе
+	MPI_Gather(BlockResult, BLOCK_ROWS* COL_COUNT_B, MPI_INT, Result, BLOCK_ROWS* COL_COUNT_B, MPI_INT, 0, MPI_COMM_WORLD);
 
-		// Отправить результат
-		MPI_Send(&Result, WorkerRowCount * M2, MPI_INT, 0, TAG_RECEIVE, MPI_COMM_WORLD);
+	steady_clock::time_point EndTime = high_resolution_clock::now();
+	long long TotalTime = duration_cast<microseconds>(EndTime - StartTime).count();
+
+	if (Rank == 0)
+	{
+		cout << "MPI MODE USING " << WorkerProcessCount << " WORKER PROCESSES" << endl;
+		
+		PrintMatrices(MatrixA, MatrixB, Result);
+		
+		cout << "Total time: " << TotalTime << endl;
 	}
 
 	// По домам
